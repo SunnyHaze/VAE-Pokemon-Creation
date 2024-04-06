@@ -10,150 +10,21 @@ from torch.utils.data import random_split, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 
-from utils.data_utils import custom_dataset
+from utils.data_utils import figure_dataset
 from utils.img_reader import mapping_img, txt_matrix_reader, colormap
 from utils.lr_sched  import adjust_learning_rate
 import numpy as np
 
-class ResnetBlock(nn.Module):
-    def __init__(self, in_channel, out_channel, kernel_size, stride, padding):
-        super(ResnetBlock, self).__init__()
-        self.conv1 = nn.Conv2d(
-            in_channels = in_channel,
-            out_channels = out_channel,
-            kernel_size = kernel_size,
-            stride = stride,
-            padding=padding
-        )
-        self.bn1 = nn.BatchNorm2d(out_channel)
-        self.conv2 = nn.Conv2d(
-            in_channels = out_channel,
-            out_channels = out_channel,
-            kernel_size = kernel_size,
-            stride = stride,
-            padding=padding
-        )
-        self.bn2 = nn.BatchNorm2d(out_channel)
-        
-        self.relu = nn.ReLU()
 
-    def forward(self, x):
-        x_ = x
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x += x_
-        x = self.relu(x)
-        
-
-class DeResnetBlock(nn.Module):
-    def __init__(self, in_channel, out_channel, kernel_size, stride, padding):
-        super(ResnetBlock, self).__init__()
-        self.conv1 = nn.ConvTranspose2d(
-            in_channels = in_channel,
-            out_channels = out_channel,
-            kernel_size = kernel_size,
-            stride = stride,
-            padding=padding
-        )
-        self.bn1 = nn.BatchNorm2d(out_channel)
-        self.conv2 = nn.ConvTranspose2d(
-            in_channels = out_channel,
-            out_channels = out_channel,
-            kernel_size = kernel_size,
-            stride = stride,
-            padding=padding
-        )
-        self.bn2 = nn.BatchNorm2d(out_channel)
-        
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        x_ = x
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x += x_
-        x = self.relu(x)
-
-
-class VAE(nn.Module):
-    def __init__(self, 
-                 input_size = 20,
-                 cnn_channel = 256,
-                #  hidden_size= 256,
-                 lattent_size = 32
-                 ):
-        super(VAE, self).__init__()
-        self.input_size = input_size
-        self.cnn_channel = cnn_channel,
-        self.lattent_size = lattent_size
-        self.encoder = nn.Sequential(
-            ResnetBlock(3, cnn_channel / 4, 3, 1, 1),
-            ResnetBlock(cnn_channel / 4, cnn_channel / 2, 3, 2, 1), # 下采样一次
-            ResnetBlock(cnn_channel / 2, cnn_channel, 3, 2, 1),     # 下采样两次
-            nn.Flatten(),
-            nn.Linear(
-                in_features=input_size * input_size * 3 / 4, # 300
-                out_features=lattent_size * 2  # both mean & std
-            ),
-        )
-        self.decoder_linear = nn.Linear(in_features=lattent_size, out_features=input_size * input_size * 3 / 4,)
-        self.decoder_deconv = nn.Sequential(
-            DeResnetBlock(cnn_channel, cnn_channel / 2, 3, 2, 1),
-            DeResnetBlock(cnn_channel / 2, cnn_channel / 4, 3, 2, 1),
-            ResnetBlock(cnn_channel / 2,  cnn_channel / 4, 3, 1, 1 )
-        )
-    
-    
-    
-    def forward(self, img):
-        B, C, H, W = img.shape
-        
-        lattent_vectors = self.encoder(img)
-        mu, log_var = torch.chunk(lattent_vectors, chunks=2, dim=1) # split it
-        
-        # log_var  == $\log \sigma^2$
-        # reparameterize
-        std = torch.exp(0.5 * log_var)
-        eps = torch.randn_like(std)
-        z = mu + eps * std
-        
-        z = self.decoder_linear(z)
-        decode_img = torch.reshape(z, (B, self.cnn_channel, self.input_size, self.input_size))
-        decode_img = self.decoder_deconv(decode_img)
-    
-    def forward(self, x, hidden = None):
-        # LSTM前向传播
-        if hidden != None:
-            out, hidden = self.lstm(x, hidden)
-        else:
-            out, hidden = self.lstm(x)
-        
-        # print(out.shape)  # 1, 40, 512
-        # out = self.norm(out.permute(0, 2, 1)).permute(0, 2, 1)
-        # 使用全连接层进行预测
-        out = self.fc(out)
-        
-        # out = torch.softmax(out, dim=1)
-        return out, hidden
-
-    # def init_hidden(self, batch_size, device):
-    #     # 初始化隐藏状态
-    #     return (torch.zeros(1, batch_size, self.hidden_size, device = device),
-    #             torch.zeros(1, batch_size, self.hidden_size, device = device))
+from model import VAE
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Pokemon Generator by LSTM Training', add_help=True)
-    parser.add_argument("--batch_size", default=64, type=int,
+    parser.add_argument("--batch_size", default=256, type=int,
                         help="Batchsize per GPU")
     parser.add_argument("--seq_len", default=100, type=int,
                         help="Batchsize per GPU")
-    parser.add_argument("--output_dir", default="out_lr1e-3_b64_epoch5000_argmax_seqlen100_lrsched_noNorm_larger_seed41", type= str,
+    parser.add_argument("--output_dir", default="output_dir_lr1e-3_epoch5000", type= str,
     # parser.add_argument("--output_dir", default="out_test", type= str,
                         help = 'output dir for ckpt and logs')
     parser.add_argument("--epoch", default=5000, type=int,
@@ -168,7 +39,7 @@ def get_args_parser():
                         help = 'masked rate of the input images')
     parser.add_argument("--save_period", default=200, type=int,
                         help = 'masked rate of the input images')
-    parser.add_argument("--warmup_epochs", default=200, type=int,
+    parser.add_argument("--warmup_epochs", default=20, type=int,
                         help = 'warmup epochs')
     parser.add_argument("--min_lr", default=1e-7, type=float,
                         help = 'min lr for lr schedule')
@@ -177,43 +48,21 @@ def get_args_parser():
 
     return parser
 
-def generate_image(model:PixelRNN, initial_pixels, max_pixels=400):
-    # 初始化生成图像
-    generated_image = initial_pixels
-    
-    # 将生成的像素逐步添加到图像中，直到达到最大像素数量
-    for _ in range(max_pixels - len(initial_pixels)):
-        # 将生成图像转换为模型的输入格式
-        input_tensor = generated_image[ -args.seq_len:, :].unsqueeze(0)
-        
-        # 使用模型进行预测
-        model.eval()
-        with torch.no_grad():
-            output, hidden = model(input_tensor)
-        # print(output.shape)
-        # print(output[:, -1, :])
-        # 从输出中获取下一个像素的概率分布
-        # next_pixel_probs = torch.softmax(output[:, -1, :], dim=1)
-        # 根据概率分布采样下一个像素值
-        # next_pixel = torch.multinomial(next_pixel_probs, 1).item() # 这里也可以直接用argmax，但这样有更多随机性。
-        next_pixel = torch.argmax(output[: , -1, :], dim=-1).item()
-        # print(next_pixel)
-        # print(next_pixel.shape)
-        next_one_hot_pixel = torch.zeros(1, 167, device=args.device)
-        next_one_hot_pixel[:, next_pixel] = 1
-        # print(next_pixel)
-        # 将下一个像素添加到生成的图像中
-        generated_image = torch.concat([generated_image, next_one_hot_pixel], dim=0)
-    
-    return generated_image
+# 计算VAE的损失函数
+def vae_loss(reconstructed_x, x, mu, log_var):
+    # print(torch.max(x), torch.min(x))
+    # print(torch.max(reconstructed_x), torch.min(reconstructed_x))/
+    reconstruction_loss = F.binary_cross_entropy(reconstructed_x, x, reduction="sum")
+    # reconstruction_loss = F.binary_cross_entropy(reconstructed_x, x)
+    kl_divergence = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+    return reconstruction_loss + kl_divergence
 
 def main(args):
     # torch.manual_seed(114514)
     torch.manual_seed(args.seed)
     log_writer = SummaryWriter(log_dir=args.output_dir)
     
-    my_dataset = custom_dataset("pixel_color.txt", seq_len=args.seq_len)
-    whole_dataset = custom_dataset("pixel_color.txt", seq_len=-1)
+    my_dataset = figure_dataset("/mnt/data0/xiaochen/workspace/VAE-Pokemon-Creation/figure")
 
     train_ratio = 0.99
     test_ratio = 1 - train_ratio
@@ -235,7 +84,7 @@ def main(args):
 
 
     device = args.device
-    model = PixelRNN()
+    model = VAE(40)
     
     model = model.to(device)
     print(model)
@@ -250,74 +99,58 @@ def main(args):
     # ----previsualize the test images:----
     test_rgb_images = []
     test_rgb_images_masked = []
-    for idx, _, _ in test_dataset:
-        img = whole_dataset[idx]
-        pixel_img = torch.argmax(img, dim=-1)
-        rgb_img = torch.tensor(mapping_img(pixel_img))
+    # for idx, _, _ in test_dataset:
+    #     img = whole_dataset[idx]
+    #     pixel_img = torch.argmax(img, dim=-1)
+    #     rgb_img = torch.tensor(mapping_img(pixel_img))
         
-        visible_height = int(args.mask_rate * 20)
-        masked_img = torch.zeros_like(rgb_img)
-        masked_img[0:visible_height, :, : ] = rgb_img[0:visible_height, :, : ]
-        test_rgb_images.append(rgb_img)      
-        test_rgb_images_masked.append(masked_img)
+    #     visible_height = int(args.mask_rate * 20)
+    #     masked_img = torch.zeros_like(rgb_img)
+    #     masked_img[0:visible_height, :, : ] = rgb_img[0:visible_height, :, : ]
+    #     test_rgb_images.append(rgb_img)      
+    #     test_rgb_images_masked.append(masked_img)
     # exit(0)
     
-    print(rgb_img.shape)
-    test_rgb_img = torch.cat(test_rgb_images, dim=1)
-    print(test_rgb_img.shape)
-    test_rgb_img_masked = torch.cat(test_rgb_images_masked, dim=1)
+    # print(rgb_img.shape)
+    # test_rgb_img = torch.cat(test_rgb_images, dim=1)
+    # print(test_rgb_img.shape)
+    # test_rgb_img_masked = torch.cat(test_rgb_images_masked, dim=1)
     
-    plt.imsave("test.png", np.uint8(test_rgb_img.numpy()))
-    log_writer.add_images("test_set/raw", test_rgb_img.permute(2, 0, 1).unsqueeze(0) / 256)
-    log_writer.add_images("test_set/masked", test_rgb_img_masked.permute(2, 0, 1).unsqueeze(0) / 256)
-    log_writer.flush()
+    # plt.imsave("test.png", np.uint8(test_rgb_img.numpy()))
+    # log_writer.add_images("test_set/raw", test_rgb_img.permute(2, 0, 1).unsqueeze(0) / 256)
+    # log_writer.add_images("test_set/masked", test_rgb_img_masked.permute(2, 0, 1).unsqueeze(0) / 256)
+    # log_writer.flush()
     # exit(0)
     #  -----------------------------------
     for epoch in range(args.epoch):
         running_loss = 0.0
-        
-        # test for one epoch
-        if epoch % args.test_period == 0 or epoch == args.epoch - 1:
-            print(f"  Testing on epoch {epoch}...")
-            pred_imgs = []
-            for idx, _, _ in test_dataset:
-                img = whole_dataset[idx] # seq_len, dim
-                visible_seq_len = int(args.mask_rate * 400)
-                croped_img = img[0 : visible_seq_len, :].to(device)
-                
-                # print(croped_img.shape)
-                # import pdb
-                # pdb.set_trace()
-                pred = generate_image(model, croped_img)
-                pixel_pred = torch.argmax(pred, dim=-1)
-                torch_colormap = torch.tensor(colormap).to(args.device)
-                rgb_pred = torch.reshape(torch_colormap[pixel_pred], (20, 20, 3))
-                
-                # rgb_pred = mapping_img(pixel_pred)                
-                pred_imgs.append(rgb_pred)
-            pred_imgs = torch.cat(pred_imgs, dim=1)
-            log_writer.add_images("train/test_samples", pred_imgs.permute(2, 0, 1).unsqueeze(0) / 256, epoch)
                 
         # exit(0)
         # train for one epoch
         model.train()
         lr = adjust_learning_rate(optimizer=optimizer, epoch=epoch, args=args)
         log_writer.add_scalar("train/lr", lr, epoch)
-        for _, data, label in train_loader:
-            data, label = data.to(device), label.to(device)
+        for data in train_loader:
+            data = data.to(device)
+            # print(data.shape)
             optimizer.zero_grad()
-            pred, hidden = model(data)
-            
-            pred_pixel = pred[:, -1, :] # Batch, seq_len, dim
-            loss = criterion(
-                pred_pixel.view(-1, pred_pixel.size(-1) ),  # B, Dim
-                label.view(-1, label.size(-1) )             # B, Dim
+            predict_img, mu, log_var = model(data)
+            # print(predict_img.shape)
+            predict_img = torch.sigmoid(predict_img)
+            loss = vae_loss(
+                    reconstructed_x=predict_img,
+                    x = data,
+                    mu=mu,
+                    log_var=log_var
                 )
             # print(loss)
             loss.backward()
             optimizer.step()
             running_loss += loss
         log_writer.add_scalar("train/epoch_loss", running_loss / len(train_loader), epoch)
+        if epoch % 50 == 0 or epoch == args.epoch:
+            log_writer.add_images("train/x", data[:16], epoch)
+            log_writer.add_images("train/reconstruct_img", predict_img[:16], epoch)
         print(f"Epoch {epoch+1}, Loss: {running_loss / len(train_loader)}")
         log_writer.flush()
         
