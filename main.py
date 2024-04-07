@@ -24,12 +24,12 @@ def get_args_parser():
                         help="Batchsize per GPU")
     parser.add_argument("--seq_len", default=100, type=int,
                         help="Batchsize per GPU")
-    parser.add_argument("--output_dir", default="output_dir_lr1e-3_epoch5000", type= str,
+    parser.add_argument("--output_dir", default="output_dir_lr5e-3_epoch10000, ", type= str,
     # parser.add_argument("--output_dir", default="out_test", type= str,
                         help = 'output dir for ckpt and logs')
-    parser.add_argument("--epoch", default=5000, type=int,
+    parser.add_argument("--epoch", default=10000, type=int,
                         help = 'Number of epochs')
-    parser.add_argument("--lr", default="1e-3", type=float,
+    parser.add_argument("--lr", default="5e-3", type=float,
                         help = 'Learning rate')
     parser.add_argument("--device", default="cuda", type=str,
                         help="Device: cuda or GPU")
@@ -149,8 +149,8 @@ def main(args):
             running_loss += loss
         log_writer.add_scalar("train/epoch_loss", running_loss / len(train_loader), epoch)
         if epoch % 50 == 0 or epoch == args.epoch:
-            log_writer.add_images("train/x", data[:16], epoch)
-            log_writer.add_images("train/reconstruct_img", predict_img[:16], epoch)
+            log_writer.add_images("train/x", data[:32], epoch)
+            log_writer.add_images("train/reconstruct_img", predict_img[:32], epoch)
         print(f"Epoch {epoch+1}, Loss: {running_loss / len(train_loader)}")
         log_writer.flush()
         

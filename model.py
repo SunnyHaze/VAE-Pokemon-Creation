@@ -73,7 +73,7 @@ class VAE(nn.Module):
     def __init__(self, 
                  input_size = 20,
                  hidden_size= 1024,
-                 lattent_size = 32
+                 lattent_size = 64
                  ):
         super(VAE, self).__init__()
         self.input_size = input_size

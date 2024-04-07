@@ -3,6 +3,7 @@ import torch
 import random
 import numpy as np
 import os
+import cv2
 from PIL import Image
 # from . import img_reader
 
@@ -40,9 +41,12 @@ class figure_dataset(Dataset):
     def __getitem__(self, index):
         img_name = os.path.join(self.path, self.img_name_list[index])
         image = Image.open(img_name)
-        image = image.convert('RGB') # remove the alpha channel
+        image = image.convert('RGBA') # remove the alpha channel
         image = np.array(image) / 255
-        image = torch.Tensor(image)
+        image = torch.Tensor(image)  # H, W, C   C=RGBA
+        alpha = image[:, :, -1].unsqueeze(2)  # (H, W, 1)
+        image = image[:,:,: 3]
+        image = image * alpha +  (1-alpha)
         return image.permute(2, 0, 1) # C ,H, W
     def __len__(self):
         return len(self.img_name_list)
@@ -51,13 +55,13 @@ if __name__ == "__main__":
     # data = custom_dataset("pixel_color.txt")
     data = figure_dataset("/mnt/data0/xiaochen/workspace/VAE-Pokemon-Creation/figure")
     
-    img = data[503]
+    img = data[0]
     print(img.shape)
     
     import matplotlib.pyplot as plt
     np.set_printoptions(threshold=np.inf)
-    print(img.numpy())
-    plt.imshow(img.numpy())
+    print(img.numpy().shape)
+    plt.imshow(img.permute(1, 2, 0).numpy())
     
     plt.savefig("test.jpg")
     # import pdb
