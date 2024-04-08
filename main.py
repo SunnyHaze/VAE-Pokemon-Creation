@@ -24,12 +24,19 @@ def get_args_parser():
                         help="Batchsize per GPU")
     parser.add_argument("--seq_len", default=100, type=int,
                         help="Batchsize per GPU")
-    parser.add_argument("--output_dir", default="output_dir_lr5e-3_epoch10000, ", type= str,
+    parser.add_argument("--output_dir", default="output_dir_lr5e-4_epoch10000_color_latent16_hidden512", type= str,
     # parser.add_argument("--output_dir", default="out_test", type= str,
                         help = 'output dir for ckpt and logs')
     parser.add_argument("--epoch", default=10000, type=int,
                         help = 'Number of epochs')
-    parser.add_argument("--lr", default="5e-3", type=float,
+    
+    parser.add_argument("--hidden_size", default=512, type=int,
+                        help = 'Number of epochs')
+    parser.add_argument("--latent_size", default=16, type=int,
+                        help = 'Number of epochs')
+    
+    
+    parser.add_argument("--lr", default="5e-4", type=float,
                         help = 'Learning rate')
     parser.add_argument("--device", default="cuda", type=str,
                         help="Device: cuda or GPU")
@@ -84,7 +91,11 @@ def main(args):
 
 
     device = args.device
-    model = VAE(40)
+    model = VAE(
+        input_size=40,
+        hidden_size=args.hidden_size,
+        lattent_size=args.latent_size
+        )
     
     model = model.to(device)
     print(model)
@@ -136,7 +147,6 @@ def main(args):
             optimizer.zero_grad()
             predict_img, mu, log_var = model(data)
             # print(predict_img.shape)
-            predict_img = torch.sigmoid(predict_img)
             loss = vae_loss(
                     reconstructed_x=predict_img,
                     x = data,

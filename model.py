@@ -72,8 +72,8 @@ class DeResnetBlock(nn.Module):
 class VAE(nn.Module):
     def __init__(self, 
                  input_size = 20,
-                 hidden_size= 1024,
-                 lattent_size = 64
+                 hidden_size= 512,
+                 lattent_size = 32
                  ):
         super(VAE, self).__init__()
         self.input_size = input_size
@@ -107,27 +107,41 @@ class VAE(nn.Module):
             # nn.BatchNorm1d(hidden_size),
             nn.Linear(hidden_size, input_size * input_size * 3)
         )
-    
-    
-    
-    def forward(self, img):
-        B, C, H, W = img.shape
         
-        lattent_vectors = self.encoder(img)
-        # mu, log_var = lattent_vectors[:, lattent_vectors.shape[1] // 2: ], lattent_vectors[:,: lattent_vectors.shape[1] // 2 ]
-        # print(lattent_vectors.shape)
-        mu, log_var = torch.chunk(lattent_vectors, chunks=2, dim=1) # split it
-        # print(mu.shape, log_var.shape)
-        # log_var  == $\log \sigma^2$
         
-        # reparameterize
+    def reparameterize(self, mu, log_var):
         std = torch.exp(0.5 * log_var)
         eps = torch.randn_like(std)
         z = mu + eps * std
+        return z
+    
         
-        # z = self.decoder_linear(z)
+    def encode(self, img):
+        """
+        `return z, mu, log_var`
+        """
+        self.input_shape = [img.shape[0],  img.shape[1],  img.shape[2],  img.shape[3]]
+        lattent_vectors = self.encoder(img)
+        mu, log_var = torch.chunk(lattent_vectors, chunks=2, dim=1) # split it
+        # log_var  == $\log \sigma^2$
+        
+        z = self.reparameterize(mu, log_var)
+        
+        return z, mu, log_var
+    
+    def decode(self, z):
+        B, D = z.shape
+        self.input_shape[0] = B 
+        
+        
         decode_img = self.decoder(z)
-        decode_img = torch.reshape(decode_img, (B, C, H, W))
+        decode_img = torch.reshape(decode_img, self.input_shape)
+        decode_img = torch.sigmoid(decode_img)
+        return decode_img
+
+    def forward(self, img):
+        z, mu, log_var = self.encode(img)
+        decode_img = self.decode(z)
         return decode_img, mu, log_var
     
    
