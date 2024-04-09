@@ -70,7 +70,7 @@
 - 为了确保网格化参数搜索可以比较有效的促进图像变换，latent_size不能太大，否则各个隐空间的上的点会过于独立，16左右就比较合适了。
 - 目前默认为10000epoch，目测可以较好的收敛。
 - batch_size可以根据不同的设备适当调整，可能也需要跟着调整epoch和lr
-- **可以多做尝试，多换学习率和随机种子，有好的结果或者不好的结果可以在本仓库的[discussion版块](https://github.com/SunnyHaze/VAEE-Pokemon-Creation/discussions)一起讨论。**
+- **可以多做尝试，多换学习率和随机种子，有好的结果或者不好的结果可以在本仓库的[discussion版块](https://github.com/SunnyHaze/VAE-Pokemon-Creation/discussions)一起讨论。**
 
 
 ### 一些生成结果展示
