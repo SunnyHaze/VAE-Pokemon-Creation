@@ -51,15 +51,19 @@ def get_args_parser():
 def vae_loss(reconstructed_x, x, mu, log_var):
     # print(torch.max(x), torch.min(x))
     # print(torch.max(reconstructed_x), torch.min(reconstructed_x))/
-    reconstruction_loss = F.binary_cross_entropy(reconstructed_x, x, reduction="sum")
+    # reconstruction_loss = F.mse_loss(reconstructed_x, x, reduction="mean")
     # reconstruction_loss = F.binary_cross_entropy(reconstructed_x, x)
-    kl_divergence = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    return reconstruction_loss + kl_divergence
+    
+    reconstruction_loss = F.mse_loss(reconstructed_x, x, reduction="sum")  # The Binary Cross-Entropy (BCE) loss lacks theoretical support.
+    kl_divergence = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp()) / 16
+    return reconstruction_loss * 10 + kl_divergence, kl_divergence # 10 is magic number for balance
 
 def main(args):
     # torch.manual_seed(114514)
-    output_path = f"output_lr{args.lr}_epoch{args.epoch}_latent{args.latent_size}_hidden{args.hidden_size}"
+    output_path = f"{args.output_dir}_lr{args.lr}_epoch{args.epoch}_latent{args.latent_size}_hidden{args.hidden_size}"
     args.output_dir = output_path
+    if args.output_dir:
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     
     torch.manual_seed(args.seed)
     log_writer = SummaryWriter(log_dir=args.output_dir)
@@ -95,43 +99,12 @@ def main(args):
     model = model.to(device)
     print(model)
     
-    criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr = args.lr)
-    
-    # hidden state for LSTM
-    # hidden = model.init_hidden(args.batch_size, device = device)
-    # hidden = hidden.to(device)
-
-    # ----previsualize the test images:----
-    test_rgb_images = []
-    test_rgb_images_masked = []
-    # for idx, _, _ in test_dataset:
-    #     img = whole_dataset[idx]
-    #     pixel_img = torch.argmax(img, dim=-1)
-    #     rgb_img = torch.tensor(mapping_img(pixel_img))
-        
-    #     visible_height = int(args.mask_rate * 20)
-    #     masked_img = torch.zeros_like(rgb_img)
-    #     masked_img[0:visible_height, :, : ] = rgb_img[0:visible_height, :, : ]
-    #     test_rgb_images.append(rgb_img)      
-    #     test_rgb_images_masked.append(masked_img)
-    # exit(0)
-    
-    # print(rgb_img.shape)
-    # test_rgb_img = torch.cat(test_rgb_images, dim=1)
-    # print(test_rgb_img.shape)
-    # test_rgb_img_masked = torch.cat(test_rgb_images_masked, dim=1)
-    
-    # plt.imsave("test.png", np.uint8(test_rgb_img.numpy()))
-    # log_writer.add_images("test_set/raw", test_rgb_img.permute(2, 0, 1).unsqueeze(0) / 256)
-    # log_writer.add_images("test_set/masked", test_rgb_img_masked.permute(2, 0, 1).unsqueeze(0) / 256)
-    # log_writer.flush()
-    # exit(0)
     #  -----------------------------------
     for epoch in range(args.epoch):
         running_loss = 0.0
-                
-        # exit(0)
+        running_kl = 0.0
+        
         # train for one epoch
         model.train()
         lr = adjust_learning_rate(optimizer=optimizer, epoch=epoch, args=args)
@@ -142,7 +115,7 @@ def main(args):
             optimizer.zero_grad()
             predict_img, mu, log_var = model(data)
             # print(predict_img.shape)
-            loss = vae_loss(
+            loss, kl_divergence = vae_loss(
                     reconstructed_x=predict_img,
                     x = data,
                     mu=mu,
@@ -152,7 +125,10 @@ def main(args):
             loss.backward()
             optimizer.step()
             running_loss += loss
+            running_kl += kl_divergence
         log_writer.add_scalar("train/epoch_loss", running_loss / len(train_loader), epoch)
+        log_writer.add_scalar("train/epoch_kl_divergence", running_kl / len(train_loader), epoch)
+        log_writer.add_scalar("train/epoch_reconstruct_loss", (running_loss - running_kl) / len(train_loader), epoch)
         if epoch % 50 == 0 or epoch == args.epoch:
             log_writer.add_images("train/x", data[:32], epoch)
             log_writer.add_images("train/reconstruct_img", predict_img[:32], epoch)
@@ -165,37 +141,5 @@ def main(args):
 if __name__ == "__main__":
     args = get_args_parser()
     args = args.parse_args()
-    if args.output_dir:
-        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
     main(args)
-    
-    
-# # re-manage datasets, transform into one-hot tensors
-# pixel_color_data = torch.tensor(pixel_color, dtype=torch.long)
-# print(pixel_color_data.shape)
-# one_hot_matrix = torch.eye(167)
-
-# one_hot_imgs = one_hot_matrix[pixel_color_data]
-# print(one_hot_imgs.shape)
-
-# print(one_hot_imgs[0])
-
-
-# pixel_imgs = torch.argmax(one_hot_imgs, dim=-1)
-# print(pixel_imgs.shape)
-# print(torch.sum(pixel_imgs - pixel_color_data)) 
-
-
-
-# batchsize = 4
-
-
-# model = PixelRNN()
-# print(model)
-
-# hidden = model.init_hidden(1)
-# train_X = one_hot_imgs[0:1]
-# print(train_X.shape)
-# output, hidden = model(train_X, hidden)
-# print(output.shape)
-# print(output)
