@@ -11,7 +11,6 @@ from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 
 from utils.data_utils import figure_dataset
-from utils.img_reader import mapping_img, txt_matrix_reader, colormap
 from utils.lr_sched  import adjust_learning_rate
 import numpy as np
 
@@ -20,30 +19,23 @@ from model import VAE
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Pokemon Generator by LSTM Training', add_help=True)
+    # VAE  (model) settings
+    parser.add_argument("--hidden_size", default=1024, type=int,
+                        help = 'VAE settings, size of hidden layer for encoder and decoder')
+    parser.add_argument("--latent_size", default=16, type=int,
+                        help = 'VAE settings, size of the latent vector.')
+    
+    # training settings
     parser.add_argument("--batch_size", default=256, type=int,
                         help="Batchsize per GPU")
-    parser.add_argument("--seq_len", default=100, type=int,
-                        help="Batchsize per GPU")
-    parser.add_argument("--output_dir", default="output_dir_lr5e-4_epoch10000_color_latent16_hidden512", type= str,
-    # parser.add_argument("--output_dir", default="out_test", type= str,
+    parser.add_argument("--output_dir", default="output_dir", type= str,
                         help = 'output dir for ckpt and logs')
     parser.add_argument("--epoch", default=10000, type=int,
                         help = 'Number of epochs')
-    
-    parser.add_argument("--hidden_size", default=512, type=int,
-                        help = 'Number of epochs')
-    parser.add_argument("--latent_size", default=16, type=int,
-                        help = 'Number of epochs')
-    
-    
     parser.add_argument("--lr", default="5e-4", type=float,
                         help = 'Learning rate')
     parser.add_argument("--device", default="cuda", type=str,
                         help="Device: cuda or GPU")
-    parser.add_argument("--test_period", default=200, type=int,
-                        help = 'Test when go through this epochs')
-    parser.add_argument("--mask_rate", default=0.5, type=int,
-                        help = 'masked rate of the input images')
     parser.add_argument("--save_period", default=200, type=int,
                         help = 'masked rate of the input images')
     parser.add_argument("--warmup_epochs", default=20, type=int,
@@ -66,6 +58,9 @@ def vae_loss(reconstructed_x, x, mu, log_var):
 
 def main(args):
     # torch.manual_seed(114514)
+    output_path = f"output_lr{args.lr}_epoch{args.epoch}_latent{args.latent_size}_hidden{args.hidden_size}"
+    args.output_dir = output_path
+    
     torch.manual_seed(args.seed)
     log_writer = SummaryWriter(log_dir=args.output_dir)
     
